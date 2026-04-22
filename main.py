@@ -208,19 +208,7 @@ def main_keyboard() -> InlineKeyboardMarkup:
             text="🚀 افتح التطبيق (Mini App)",
             web_app=WebAppInfo(url=url),
         )])
-    kb = rows + [
-        [InlineKeyboardButton(text="🎬 شاهد الإعلانات", callback_data="ads"),
-         InlineKeyboardButton(text="📋 إنجاز المهام", callback_data="tasks")],
-        [InlineKeyboardButton(text="👥 ادع الأصدقاء", callback_data="invite"),
-         InlineKeyboardButton(text="💰 سحب", callback_data="withdraw")],
-        [InlineKeyboardButton(text="🎡 عجلة الحظ", callback_data="spin"),
-         InlineKeyboardButton(text="🎁 صندوق غامض", callback_data="mystery")],
-        [InlineKeyboardButton(text="🏆 الترتيب", callback_data="leaderboard"),
-         InlineKeyboardButton(text="🎁 مكافأة يومية", callback_data="daily")],
-        [InlineKeyboardButton(text="📊 إحصائياتي", callback_data="stats"),
-         InlineKeyboardButton(text="🔄 تحديث", callback_data="home")],
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=kb)
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def back_kb() -> InlineKeyboardMarkup:
