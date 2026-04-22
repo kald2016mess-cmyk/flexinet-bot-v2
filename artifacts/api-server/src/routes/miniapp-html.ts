@@ -1,3 +1,8 @@
+export function buildMiniappHtml(opts: { adsgramBlockId?: string } = {}): string {
+  const blockId = (opts.adsgramBlockId || "").replace(/[^a-zA-Z0-9_-]/g, "");
+  return MINIAPP_HTML.replace("__ADSGRAM_BLOCK_ID__", blockId);
+}
+
 export const MINIAPP_HTML = `<!doctype html>
 <html lang="ar" dir="rtl">
 <head>
@@ -5,6 +10,8 @@ export const MINIAPP_HTML = `<!doctype html>
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
 <title>شبكتي</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://sad.adsgram.ai/js/sad.min.js"></script>
+<script>window.__ADSGRAM_BLOCK_ID = "__ADSGRAM_BLOCK_ID__";</script>
 <style>
   :root {
     --bg: #0b1020;
@@ -328,15 +335,35 @@ export const MINIAPP_HTML = `<!doctype html>
     haptic('light');
     if (action === 'ad') {
       try {
-        // simulate ad watching
-        openModal('<h3>🎬 يتم تشغيل الإعلان...</h3><p>انتظر 5 ثواني للحصول على المكافأة</p><div class="big" id="ad-cd">5</div>');
-        let n = 5;
-        await new Promise(res => {
-          const it = setInterval(() => {
-            n--; const el = document.getElementById('ad-cd'); if (el) el.textContent = n;
-            if (n <= 0) { clearInterval(it); res(); }
-          }, 1000);
-        });
+        const blockId = window.__ADSGRAM_BLOCK_ID;
+        if (blockId && window.Adsgram) {
+          if (!window.__adsgramCtl) {
+            window.__adsgramCtl = window.Adsgram.init({ blockId });
+          }
+          openModal('<h3>🎬 جارٍ تحميل الإعلان...</h3><p>سيتم فتح الإعلان بعد لحظات</p>');
+          try {
+            await window.__adsgramCtl.show();
+          } catch (adErr) {
+            closeModal();
+            notify('warning');
+            const code = adErr && (adErr.error || adErr.code || adErr.description);
+            if (code === 'NoAd' || code === 'no-ad' || (typeof code === 'string' && code.toLowerCase().includes('no'))) {
+              toast('لا توجد إعلانات متاحة الآن، حاول لاحقاً');
+            } else {
+              toast('تم إلغاء الإعلان');
+            }
+            return;
+          }
+        } else {
+          openModal('<h3>🎬 يتم تشغيل الإعلان...</h3><p>انتظر 5 ثواني للحصول على المكافأة</p><div class="big" id="ad-cd">5</div>');
+          let n = 5;
+          await new Promise(res => {
+            const it = setInterval(() => {
+              n--; const el = document.getElementById('ad-cd'); if (el) el.textContent = n;
+              if (n <= 0) { clearInterval(it); res(); }
+            }, 1000);
+          });
+        }
         const r = await api('/ad');
         notify('success');
         render(r); pushActivity('🎬 مشاهدة إعلان', r.reward);
