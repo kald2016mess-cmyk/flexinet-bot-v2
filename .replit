@@ -53,4 +53,4 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.shared]
-ADSGRAM_BLOCK_ID = "bot-28347"
+ADSGRAM_BLOCK_ID = "27497"
