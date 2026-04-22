@@ -104,6 +104,19 @@ def db_init():
             status    TEXT DEFAULT 'pending',
             created_at INTEGER DEFAULT (strftime('%s','now'))
         );
+        CREATE TABLE IF NOT EXISTS task_completions (
+            user_id      INTEGER NOT NULL,
+            task_id      TEXT NOT NULL,
+            completed_at INTEGER DEFAULT (strftime('%s','now')),
+            PRIMARY KEY (user_id, task_id)
+        );
+        CREATE TABLE IF NOT EXISTS tracked_channels (
+            chat_id     INTEGER PRIMARY KEY,
+            title       TEXT,
+            invite_link TEXT,
+            username    TEXT,
+            added_at    INTEGER DEFAULT (strftime('%s','now'))
+        );
         """)
 
 
@@ -239,6 +252,33 @@ def render_home(u) -> str:
 # ============================ البوت ============================
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
+
+
+@dp.my_chat_member()
+async def on_my_chat_member(event):
+    """يحفظ تلقائياً معرّف أي قناة/مجموعة يُضاف فيها البوت كعضو/مشرف."""
+    try:
+        chat = event.chat
+        new_status = event.new_chat_member.status
+        if chat.type not in ("channel", "supergroup", "group"):
+            return
+        if new_status not in ("member", "administrator", "creator"):
+            return
+        invite_link = ""
+        try:
+            full = await bot.get_chat(chat.id)
+            invite_link = full.invite_link or ""
+        except Exception:
+            pass
+        with closing(db_conn()) as c, c:
+            c.execute(
+                "INSERT OR REPLACE INTO tracked_channels (chat_id, title, invite_link, username, added_at) "
+                "VALUES (?,?,?,?, strftime('%s','now'))",
+                (chat.id, chat.title or "", invite_link, chat.username or ""),
+            )
+        log.info(f"📢 Channel tracked: {chat.title} | id={chat.id} | invite={invite_link}")
+    except Exception as e:
+        log.warning(f"my_chat_member error: {e}")
 
 
 @dp.message(CommandStart())

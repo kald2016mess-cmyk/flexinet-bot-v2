@@ -54,6 +54,19 @@ function getDb(): DatabaseSync {
         status TEXT DEFAULT 'pending',
         created_at INTEGER DEFAULT (strftime('%s','now'))
       );
+      CREATE TABLE IF NOT EXISTS task_completions (
+        user_id INTEGER NOT NULL,
+        task_id TEXT NOT NULL,
+        completed_at INTEGER DEFAULT (strftime('%s','now')),
+        PRIMARY KEY (user_id, task_id)
+      );
+      CREATE TABLE IF NOT EXISTS tracked_channels (
+        chat_id INTEGER PRIMARY KEY,
+        title TEXT,
+        invite_link TEXT,
+        username TEXT,
+        added_at INTEGER DEFAULT (strftime('%s','now'))
+      );
     `);
   }
   return db;
@@ -65,6 +78,28 @@ type UserRow = {
   tasks_done: number; spins_used: number; referred_by: number | null;
   last_spin: number; last_daily: number; last_ad: number; last_task: number;
 };
+
+// ============== Subscription Tasks ==============
+type SubTask = { id: string; title: string; reward: number; link: string; matchKey: string };
+const SUB_TASKS: SubTask[] = [
+  { id: "ch1", title: "اشترك في القناة الأولى", reward: 200,
+    link: "https://t.me/+7rSoH96ttdxiZjNk", matchKey: "7rSoH96ttdxiZjNk" },
+  { id: "ch2", title: "اشترك في القناة الثانية", reward: 200,
+    link: "https://t.me/+k7PL5M7GOxEwZjQ8", matchKey: "k7PL5M7GOxEwZjQ8" },
+];
+
+function resolveTaskChatId(task: SubTask): number | null {
+  // 1) explicit env override (e.g. TASK_CH1_CHAT_ID)
+  const envKey = `TASK_${task.id.toUpperCase()}_CHAT_ID`;
+  const envVal = Number(process.env[envKey] || 0);
+  if (envVal) return envVal;
+  // 2) auto-discovered via my_chat_member handler in main.py
+  const d = getDb();
+  const row = d.prepare(
+    "SELECT chat_id FROM tracked_channels WHERE invite_link LIKE ? ORDER BY added_at DESC LIMIT 1",
+  ).get(`%${task.matchKey}%`) as { chat_id: number } | undefined;
+  return row?.chat_id ?? null;
+}
 
 // ============== Telegram initData verification ==============
 function verifyInitData(initData: string, botToken: string): Record<string, string> | null {
@@ -181,6 +216,63 @@ router.post("/task", authMiddleware, (req: AuthedReq, res) => {
   ).run(TASK_REWARD, now, u.user_id);
   const fresh = d.prepare("SELECT * FROM users WHERE user_id=?").get(u.user_id) as UserRow;
   res.json({ reward: TASK_REWARD, ...snapshot(fresh) });
+});
+
+router.post("/tasks/list", authMiddleware, (req: AuthedReq, res) => {
+  const d = getDb();
+  const u = ensureUser(req.tgUser!);
+  const done = (d.prepare("SELECT task_id FROM task_completions WHERE user_id=?")
+    .all(u.user_id) as Array<{ task_id: string }>).map((r) => r.task_id);
+  res.json({
+    tasks: SUB_TASKS.map((t) => ({
+      id: t.id, title: t.title, reward: t.reward, link: t.link,
+      completed: done.includes(t.id),
+      configured: resolveTaskChatId(t) !== null,
+    })),
+  });
+});
+
+router.post("/tasks/claim", authMiddleware, async (req: AuthedReq, res) => {
+  const { taskId } = (req.body || {}) as { taskId?: string };
+  const task = SUB_TASKS.find((t) => t.id === taskId);
+  if (!task) return res.status(400).json({ error: "unknown_task" });
+  const d = getDb();
+  const u = ensureUser(req.tgUser!);
+  const already = d.prepare(
+    "SELECT 1 FROM task_completions WHERE user_id=? AND task_id=?",
+  ).get(u.user_id, task.id);
+  if (already) return res.status(400).json({ error: "already_done", message: "تم استلام مكافأة هذه المهمة سابقاً" });
+
+  const chatId = resolveTaskChatId(task);
+  if (!chatId) {
+    return res.status(503).json({
+      error: "not_configured",
+      message: "لم يُربط البوت بالقناة بعد. تواصل مع المسؤول.",
+    });
+  }
+  const token = process.env.BOT_TOKEN!;
+  try {
+    const r = await fetch(
+      `https://api.telegram.org/bot${token}/getChatMember?chat_id=${chatId}&user_id=${u.user_id}`,
+    );
+    const j = (await r.json()) as { ok: boolean; result?: { status?: string }; description?: string };
+    if (!j.ok) {
+      return res.status(400).json({ error: "verify_failed", message: "تعذر التحقق: " + (j.description || "") });
+    }
+    const status = j.result?.status || "";
+    if (!["member", "administrator", "creator"].includes(status)) {
+      return res.status(400).json({ error: "not_subscribed", message: "اشترك في القناة أولاً ثم اضغط تحقّق" });
+    }
+  } catch {
+    return res.status(500).json({ error: "telegram_error", message: "خطأ شبكة" });
+  }
+
+  d.prepare("INSERT OR IGNORE INTO task_completions (user_id, task_id) VALUES (?,?)")
+    .run(u.user_id, task.id);
+  d.prepare("UPDATE users SET points=points+?, tasks_done=tasks_done+1 WHERE user_id=?")
+    .run(task.reward, u.user_id);
+  const fresh = d.prepare("SELECT * FROM users WHERE user_id=?").get(u.user_id) as UserRow;
+  res.json({ ok: true, reward: task.reward, taskId: task.id, ...snapshot(fresh) });
 });
 
 router.post("/spin", authMiddleware, (req: AuthedReq, res) => {

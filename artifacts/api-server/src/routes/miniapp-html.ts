@@ -256,6 +256,26 @@ export const MINIAPP_HTML = `<!doctype html>
   .toast { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); background: var(--card-2); border: 1px solid var(--line); padding: 10px 18px; border-radius: 12px; font-size: 14px; z-index: 300; opacity: 0; transition: opacity .25s; pointer-events: none; }
   .toast.show { opacity: 1; }
   .skeleton { background: linear-gradient(90deg, #1a2247 25%, #232c5e 50%, #1a2247 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 8px; color: transparent; }
+  .task-list { display:flex; flex-direction:column; gap:10px; }
+  .task-item {
+    background: rgba(40,15,80,.55); border:1px solid rgba(180,140,255,.18);
+    border-radius: 14px; padding: 12px 14px;
+    display:flex; justify-content: space-between; align-items: center; gap: 10px;
+  }
+  .task-info { text-align: end; flex: 1; }
+  .task-title { font-weight: 700; font-size: 14px; margin-bottom: 4px; }
+  .task-reward { color: var(--gold); font-size: 12px; font-weight: 600; }
+  .task-actions { display:flex; gap:6px; align-items:center; flex-shrink:0; }
+  .btn-sub, .btn-verify {
+    padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 700;
+    border: none; cursor: pointer; text-decoration: none; display:inline-block;
+    transition: opacity .15s, transform .1s;
+  }
+  .btn-sub { background: linear-gradient(135deg, #6d28d9, #b388ff); color:#fff; }
+  .btn-verify { background: linear-gradient(135deg, #14b8a6, #5eead4); color:#062c2a; }
+  .btn-sub:active, .btn-verify:active { transform: scale(.95); }
+  .btn-verify:disabled { opacity:.5; cursor:not-allowed; }
+  .badge.done { background: rgba(94,234,212,.15); color: var(--green); padding: 6px 12px; border-radius: 8px; font-size: 12px; font-weight: 700; }
   @keyframes shimmer { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
 </style>
 </head>
@@ -407,6 +427,52 @@ export const MINIAPP_HTML = `<!doctype html>
     t.textContent = msg; t.classList.add('show');
     clearTimeout(window._tt); window._tt = setTimeout(() => t.classList.remove('show'), 2200);
   }
+  function escHtml(s) { return String(s||'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+  async function openTasksModal() {
+    openModal('<h3>📋 المهام</h3><p style="color:var(--muted)">جارٍ التحميل...</p>');
+    let data;
+    try { data = await api('/tasks/list'); }
+    catch (e) { closeModal(); return toast('تعذر تحميل المهام'); }
+    const items = (data.tasks || []).map(function(t) {
+      var done = t.completed;
+      var reward = '+' + t.reward + ' نقطة';
+      var actions = done
+        ? '<span class="badge done">✅ مكتملة</span>'
+        : '<a class="btn-sub" href="' + escHtml(t.link) + '" target="_blank" rel="noopener">اشترك</a>'
+          + '<button class="btn-verify" data-task="' + escHtml(t.id) + '">تحقّق</button>';
+      return '<div class="task-item">'
+        + '<div class="task-info">'
+        +   '<div class="task-title">' + escHtml(t.title) + '</div>'
+        +   '<div class="task-reward">' + reward + '</div>'
+        + '</div>'
+        + '<div class="task-actions">' + actions + '</div>'
+        + '</div>';
+    }).join('') || '<p style="color:var(--muted)">لا توجد مهام حالياً</p>';
+    openModal(
+      '<h3 style="margin-bottom:8px">📋 المهام المتاحة</h3>' +
+      '<p style="color:var(--muted);font-size:13px;margin:0 0 14px">اشترك في القنوات ثم اضغط «تحقّق» لاستلام النقاط</p>' +
+      '<div class="task-list">' + items + '</div>' +
+      '<button class="btn" style="margin-top:14px" onclick="closeModal()">إغلاق</button>'
+    );
+    document.querySelectorAll('.btn-verify').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.task;
+        btn.disabled = true; btn.textContent = '...';
+        haptic('light');
+        try {
+          const r = await api('/tasks/claim', { taskId: id });
+          notify('success'); render(r); pushActivity('📋 ' + (r.taskId || 'مهمة'), r.reward);
+          openModal('<h3>✅ تم!</h3><div class="big">+'+r.reward+'</div><p>نقطة أُضيفت لرصيدك</p><button class="btn" onclick="openTasksModal()">العودة للمهام</button>');
+        } catch (e) {
+          notify('warning');
+          const msg = (e.data && e.data.message) || 'تعذر التحقق';
+          btn.disabled = false; btn.textContent = 'تحقّق';
+          toast(msg);
+        }
+      });
+    });
+  }
 
   function render(s) {
     document.getElementById('points').textContent = fmt(s.points);
@@ -499,11 +565,7 @@ export const MINIAPP_HTML = `<!doctype html>
         closeModal();
       }
     } else if (action === 'task') {
-      try {
-        const r = await api('/task');
-        notify('success'); render(r); pushActivity('📋 إنجاز مهمة', r.reward);
-        openModal('<h3>✅ تم إنجاز المهمة</h3><div class="big">+'+r.reward+'</div><p>نقطة أُضيفت لرصيدك</p><button class="btn" onclick="closeModal()">رائع</button>');
-      } catch (e) { notify('warning'); if (e.status === 429) toast('⏳ '+fmtTime(e.data.wait)); }
+      await openTasksModal();
     } else if (action === 'daily') {
       try {
         const r = await api('/daily');
