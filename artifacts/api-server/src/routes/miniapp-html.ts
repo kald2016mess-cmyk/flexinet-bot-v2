@@ -1,0 +1,503 @@
+export const MINIAPP_HTML = `<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+<title>شبكتي</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: #0b1020;
+    --bg-2: #0f1530;
+    --card: #131a36;
+    --card-2: #182250;
+    --text: #e7ecff;
+    --muted: #8b97c7;
+    --accent: #6ea8ff;
+    --green: #34d399;
+    --green-2: #10b981;
+    --gold: #fbbf24;
+    --line: rgba(255,255,255,.06);
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; padding: 0;
+    background: radial-gradient(1200px 600px at 50% -10%, #1c2766 0%, var(--bg) 60%) fixed;
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Tahoma, "Cairo", sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+  .stars::before {
+    content: ""; position: fixed; inset: 0; pointer-events: none;
+    background-image:
+      radial-gradient(2px 2px at 12% 18%, rgba(255,255,255,.7), transparent),
+      radial-gradient(1px 1px at 78% 32%, rgba(255,255,255,.6), transparent),
+      radial-gradient(1.5px 1.5px at 30% 70%, rgba(255,255,255,.5), transparent),
+      radial-gradient(1px 1px at 90% 80%, rgba(255,255,255,.6), transparent);
+    opacity:.7;
+  }
+  .container { max-width: 480px; margin: 0 auto; padding: 14px 14px 100px; }
+  .topbar { display:flex; align-items:center; gap:8px; padding: 6px 4px 14px; }
+  .topbar .logo { font-weight: 800; letter-spacing:.5px; }
+  .topbar .logo .bolt { color: var(--gold); margin-inline-start: 4px; }
+  .balance-card {
+    background: linear-gradient(180deg, rgba(28,39,102,.7), rgba(19,26,54,.85));
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 16px 18px 18px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.25);
+  }
+  .balance-row { display:flex; justify-content: space-between; align-items: flex-end; }
+  .balance-label { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
+  .balance-value { display:flex; align-items: baseline; gap: 6px; }
+  .balance-value b { font-size: 40px; font-weight: 800; line-height: 1; }
+  .balance-value span { color: var(--muted); font-size: 14px; }
+  .today { text-align: start; }
+  .today b { color: var(--green); font-size: 20px; }
+  .today span { color: var(--muted); font-size: 12px; display:block; }
+  .dinar { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  .progress {
+    margin-top: 14px; height: 6px; background: rgba(255,255,255,.06);
+    border-radius: 999px; overflow: hidden;
+  }
+  .progress > div { height: 100%; background: linear-gradient(90deg, #3b82f6, #6ea8ff); border-radius: 999px; transition: width .6s ease; }
+  .progress-meta { display:flex; justify-content: space-between; color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .stats { display:grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 14px; }
+  .stat {
+    background: var(--card); border:1px solid var(--line); border-radius: 14px;
+    padding: 14px; text-align: center;
+  }
+  .stat b { font-size: 22px; font-weight: 800; }
+  .stat span { display:block; color: var(--muted); font-size: 12px; margin-top: 4px; }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+  .tile {
+    background: var(--card); border:1px solid var(--line); border-radius: 16px;
+    padding: 14px 14px 16px; cursor: pointer; transition: transform .15s, background .15s;
+    display:flex; flex-direction: column; align-items: flex-end; gap: 6px;
+    text-align: end; min-height: 100px;
+  }
+  .tile:active { transform: scale(.97); background: var(--card-2); }
+  .tile .icon {
+    width: 34px; height: 34px; border-radius: 10px;
+    background: rgba(110,168,255,.12); color: var(--accent);
+    display:grid; place-items:center; font-size: 18px; align-self: flex-end;
+  }
+  .tile .title { font-weight: 700; font-size: 15px; }
+  .tile .sub { color: var(--green); font-size: 12px; }
+  .tile.full { grid-column: span 2; flex-direction: row; justify-content: space-between; align-items: center; min-height: 60px; }
+  .tile.full .right { text-align: end; }
+  .tile.full .icon { background: rgba(251,191,36,.15); color: var(--gold); }
+  .activity {
+    margin-top: 14px; background: var(--card); border:1px solid var(--line);
+    border-radius: 16px; padding: 14px;
+  }
+  .activity h4 { margin: 0 0 10px; font-size: 14px; color: var(--muted); text-align: end; font-weight: 600; }
+  .act-item { display:flex; justify-content: space-between; align-items:center; padding: 8px 0; border-top: 1px solid var(--line); }
+  .act-item:first-of-type { border-top: 0; }
+  .act-amt { color: var(--green); font-weight: 700; }
+  .tabbar {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    background: rgba(11,16,32,.95); backdrop-filter: blur(10px);
+    border-top: 1px solid var(--line); padding: 8px 6px calc(env(safe-area-inset-bottom) + 8px);
+    display:grid; grid-template-columns: repeat(6, 1fr); gap: 2px; z-index: 100;
+  }
+  .tab { display:flex; flex-direction: column; align-items:center; gap:2px; padding: 6px 2px; color: var(--muted); font-size: 10px; cursor: pointer; border-radius: 10px; }
+  .tab.active { color: var(--accent); background: rgba(110,168,255,.08); }
+  .tab .ti { font-size: 18px; }
+  /* Modal */
+  .modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,.6); backdrop-filter: blur(4px); display:none; align-items: center; justify-content: center; z-index: 200; padding: 20px; }
+  .modal-bg.open { display:flex; }
+  .modal {
+    background: linear-gradient(180deg, var(--card-2), var(--card));
+    border: 1px solid var(--line); border-radius: 18px; padding: 20px;
+    width: 100%; max-width: 400px; text-align: center;
+    animation: pop .25s ease;
+  }
+  @keyframes pop { from { transform: scale(.9); opacity: 0 } to { transform: scale(1); opacity: 1 } }
+  .modal h3 { margin: 0 0 8px; font-size: 22px; }
+  .modal p { color: var(--muted); margin: 6px 0; font-size: 14px; }
+  .modal .big { font-size: 36px; font-weight: 800; color: var(--gold); margin: 10px 0; }
+  .btn {
+    display: inline-block; padding: 12px 22px; border-radius: 12px;
+    background: linear-gradient(180deg, var(--green), var(--green-2));
+    color: #06281e; font-weight: 700; border: 0; cursor: pointer; font-size: 15px;
+    margin-top: 8px; min-width: 140px;
+  }
+  .btn.alt { background: rgba(255,255,255,.06); color: var(--text); }
+  .btn:active { transform: scale(.97); }
+  .row { display:flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 10px; }
+  /* Wheel */
+  .wheel-wrap { position: relative; width: 260px; height: 260px; margin: 10px auto; }
+  .wheel { width: 100%; height: 100%; border-radius: 50%; transition: transform 4s cubic-bezier(.17,.67,.21,1); border: 6px solid #3b82f6; box-shadow: 0 0 30px rgba(59,130,246,.4); }
+  .pin { position: absolute; top: -10px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 14px solid transparent; border-right: 14px solid transparent; border-top: 22px solid var(--gold); filter: drop-shadow(0 2px 4px rgba(0,0,0,.4)); z-index: 2; }
+  .lb-list { text-align: end; max-height: 50vh; overflow-y: auto; padding: 6px 4px; }
+  .lb-item { display:flex; justify-content: space-between; padding: 8px 6px; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .lb-tabs { display:flex; gap: 6px; margin: 8px 0; justify-content: center; }
+  .lb-tab { padding: 6px 14px; border-radius: 999px; background: rgba(255,255,255,.05); color: var(--muted); cursor: pointer; font-size: 13px; }
+  .lb-tab.active { background: var(--accent); color: #06122e; font-weight: 700; }
+  .invite-link { background: rgba(255,255,255,.05); padding: 10px; border-radius: 10px; word-break: break-all; font-size: 12px; margin: 10px 0; color: var(--accent); border: 1px dashed rgba(110,168,255,.3); }
+  .toast { position: fixed; top: 18px; left: 50%; transform: translateX(-50%); background: var(--card-2); border: 1px solid var(--line); padding: 10px 18px; border-radius: 12px; font-size: 14px; z-index: 300; opacity: 0; transition: opacity .25s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  .skeleton { background: linear-gradient(90deg, #1a2247 25%, #232c5e 50%, #1a2247 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 8px; color: transparent; }
+  @keyframes shimmer { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
+</style>
+</head>
+<body class="stars">
+  <div class="container">
+    <div class="topbar">
+      <div class="logo">⚡ <span>شبكتي</span></div>
+    </div>
+
+    <div class="balance-card">
+      <div class="balance-row">
+        <div class="today">
+          <span class="balance-label">اليوم</span>
+          <b id="today">+0</b>
+          <span>النقاط المكتسبة</span>
+        </div>
+        <div style="text-align:end">
+          <div class="balance-label">رصيدك</div>
+          <div class="balance-value">
+            <b id="points" class="skeleton">000</b>
+            <span>نقطة</span>
+          </div>
+          <div class="dinar">= <span id="dinar">0.00</span> دينار جزائري</div>
+        </div>
+      </div>
+      <div class="progress"><div id="bar" style="width:0%"></div></div>
+      <div class="progress-meta">
+        <span id="goal">5,000 نقطة للسحب</span>
+        <span><span id="cur">0</span> / <span id="min">5000</span></span>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat"><b id="s-refs">0</b><span>الإحالات</span></div>
+      <div class="stat"><b id="s-ads">0</b><span>إعلانات</span></div>
+      <div class="stat"><b id="s-tasks">0</b><span>المهام</span></div>
+    </div>
+
+    <div class="grid">
+      <div class="tile" data-action="ad">
+        <div class="icon">🎬</div>
+        <div class="title">شاهد الإعلانات</div>
+        <div class="sub">+20 نقطة لكل منها</div>
+      </div>
+      <div class="tile" data-action="task">
+        <div class="icon">📋</div>
+        <div class="title">إنجاز المهام</div>
+        <div class="sub">+50 نقطة لكل منها</div>
+      </div>
+      <div class="tile" data-action="invite">
+        <div class="icon">👥</div>
+        <div class="title">ادعُ الأصدقاء</div>
+        <div class="sub">+100 نقطة لكل منها</div>
+      </div>
+      <div class="tile" data-action="withdraw">
+        <div class="icon">💰</div>
+        <div class="title">يسحب</div>
+        <div class="sub">الحد الأدنى 5,000 نقطة</div>
+      </div>
+      <div class="tile" data-action="spin">
+        <div class="icon">🎡</div>
+        <div class="title">عجلة الحظ</div>
+        <div class="sub">مرة كل ساعة</div>
+      </div>
+      <div class="tile" data-action="mystery">
+        <div class="icon">🎁</div>
+        <div class="title">صندوق غامض</div>
+        <div class="sub">ربح أو خسارة</div>
+      </div>
+      <div class="tile full" data-action="daily">
+        <div style="display:flex; align-items:center; gap: 12px;">
+          <div class="icon">🎁</div>
+          <div class="right">
+            <div class="title">المكافأة اليومية</div>
+            <div class="sub">+75 نقطة كل 24 ساعة</div>
+          </div>
+        </div>
+        <div style="color:var(--muted); font-size:12px" id="daily-status">متاحة</div>
+      </div>
+    </div>
+
+    <div class="activity">
+      <h4>النشاط الأخير</h4>
+      <div id="activity-list">
+        <div class="act-item"><div>مرحباً بك في شبكتي 👋</div><div class="act-amt">+0</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabbar">
+    <div class="tab active" data-tab="home"><div class="ti">⚡</div><div>بيت</div></div>
+    <div class="tab" data-tab="tasks"><div class="ti">📋</div><div>المهام</div></div>
+    <div class="tab" data-tab="ads"><div class="ti">🎬</div><div>إعلانات</div></div>
+    <div class="tab" data-tab="invite"><div class="ti">👥</div><div>يدعو</div></div>
+    <div class="tab" data-tab="withdraw"><div class="ti">💵</div><div>يسحب</div></div>
+    <div class="tab" data-tab="leaderboard"><div class="ti">🏆</div><div>الترتيب</div></div>
+  </div>
+
+  <div class="modal-bg" id="modal">
+    <div class="modal" id="modal-body"></div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+<script>
+  const tg = window.Telegram?.WebApp;
+  if (tg) { tg.ready(); tg.expand(); try { tg.setHeaderColor('#0b1020'); tg.setBackgroundColor('#0b1020'); } catch(e){} }
+
+  const initData = tg?.initData || '';
+  const API = (path) => '/api/miniapp' + path;
+  const ACTIVITY = [];
+
+  async function api(path, body = {}) {
+    const r = await fetch(API(path), {
+      method: 'POST',
+      headers: { 'Content-Type':'application/json', 'X-Telegram-Init-Data': initData },
+      body: JSON.stringify(body),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw Object.assign(new Error(data.error || 'error'), { status: r.status, data });
+    return data;
+  }
+
+  function fmt(n) { return new Intl.NumberFormat('ar-EG').format(n); }
+  function fmtTime(s) {
+    s = Math.max(0, Math.floor(s));
+    const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = s%60;
+    if (h) return h+'س '+m+'د';
+    if (m) return m+'د '+sec+'ث';
+    return sec+'ث';
+  }
+  function toast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg; t.classList.add('show');
+    clearTimeout(window._tt); window._tt = setTimeout(() => t.classList.remove('show'), 2200);
+  }
+
+  function render(s) {
+    document.getElementById('points').textContent = fmt(s.points);
+    document.getElementById('points').classList.remove('skeleton');
+    document.getElementById('dinar').textContent = (s.points / s.pointsPerDinar).toFixed(2);
+    document.getElementById('cur').textContent = fmt(s.points);
+    document.getElementById('min').textContent = fmt(s.withdrawMin);
+    document.getElementById('goal').textContent = fmt(s.withdrawMin) + ' نقطة للسحب';
+    const pct = Math.min(100, (s.points / s.withdrawMin) * 100);
+    document.getElementById('bar').style.width = pct + '%';
+    document.getElementById('s-refs').textContent = fmt(s.referrals);
+    document.getElementById('s-ads').textContent = fmt(s.adsWatched);
+    document.getElementById('s-tasks').textContent = fmt(s.tasksDone);
+    document.getElementById('daily-status').textContent =
+      s.cooldowns.daily > 0 ? 'بعد ' + fmtTime(s.cooldowns.daily) : 'متاحة الآن';
+  }
+
+  function pushActivity(label, amt) {
+    ACTIVITY.unshift({ label, amt });
+    if (ACTIVITY.length > 6) ACTIVITY.pop();
+    document.getElementById('activity-list').innerHTML = ACTIVITY.map(a =>
+      '<div class="act-item"><div>'+a.label+'</div><div class="act-amt">'+(a.amt>=0?'+':'')+a.amt+'</div></div>'
+    ).join('');
+  }
+
+  function openModal(html) {
+    document.getElementById('modal-body').innerHTML = html;
+    document.getElementById('modal').classList.add('open');
+  }
+  function closeModal() { document.getElementById('modal').classList.remove('open'); }
+  document.getElementById('modal').addEventListener('click', (e) => {
+    if (e.target.id === 'modal') closeModal();
+  });
+
+  async function load() {
+    try {
+      const s = await api('/me');
+      render(s);
+    } catch (e) {
+      document.getElementById('points').textContent = '—';
+      document.getElementById('points').classList.remove('skeleton');
+      openModal('<h3>⚠️ تعذر التحقق</h3><p>افتح هذا التطبيق من داخل بوت تيليجرام.</p><button class="btn" onclick="closeModal()">حسناً</button>');
+    }
+  }
+
+  function haptic(type='light') { try { tg?.HapticFeedback?.impactOccurred(type); } catch(e){} }
+  function notify(type='success') { try { tg?.HapticFeedback?.notificationOccurred(type); } catch(e){} }
+
+  async function doAction(action) {
+    haptic('light');
+    if (action === 'ad') {
+      try {
+        // simulate ad watching
+        openModal('<h3>🎬 يتم تشغيل الإعلان...</h3><p>انتظر 5 ثواني للحصول على المكافأة</p><div class="big" id="ad-cd">5</div>');
+        let n = 5;
+        await new Promise(res => {
+          const it = setInterval(() => {
+            n--; const el = document.getElementById('ad-cd'); if (el) el.textContent = n;
+            if (n <= 0) { clearInterval(it); res(); }
+          }, 1000);
+        });
+        const r = await api('/ad');
+        notify('success');
+        render(r); pushActivity('🎬 مشاهدة إعلان', r.reward);
+        openModal('<h3>✅ تم!</h3><div class="big">+'+r.reward+'</div><p>نقطة أُضيفت لرصيدك</p><button class="btn" onclick="closeModal()">رائع</button>');
+      } catch (e) {
+        notify('warning');
+        if (e.status === 429) toast('⏳ انتظر '+fmtTime(e.data.wait));
+        else toast('حدث خطأ');
+        closeModal();
+      }
+    } else if (action === 'task') {
+      try {
+        const r = await api('/task');
+        notify('success'); render(r); pushActivity('📋 إنجاز مهمة', r.reward);
+        openModal('<h3>✅ تم إنجاز المهمة</h3><div class="big">+'+r.reward+'</div><p>نقطة أُضيفت لرصيدك</p><button class="btn" onclick="closeModal()">رائع</button>');
+      } catch (e) { notify('warning'); if (e.status === 429) toast('⏳ '+fmtTime(e.data.wait)); }
+    } else if (action === 'daily') {
+      try {
+        const r = await api('/daily');
+        notify('success'); render(r); pushActivity('🎁 مكافأة يومية', r.reward);
+        openModal('<h3>🎁 المكافأة اليومية</h3><div class="big">+'+r.reward+'</div><p>عُد غداً للمزيد</p><button class="btn" onclick="closeModal()">شكراً</button>');
+      } catch (e) { notify('warning'); if (e.status === 429) toast('⏳ متاحة بعد '+fmtTime(e.data.wait)); }
+    } else if (action === 'mystery') {
+      try {
+        const r = await api('/mystery');
+        notify(r.result.delta >= 0 ? 'success' : 'warning'); render(r);
+        pushActivity('🎁 صندوق غامض', r.result.delta);
+        openModal('<h3>'+r.result.label+'</h3><div class="big">'+(r.result.delta>=0?'+':'')+r.result.delta+'</div><p>نقطة</p><button class="btn" onclick="closeModal()">حسناً</button>');
+      } catch (e) { toast('حدث خطأ'); }
+    } else if (action === 'spin') openSpin();
+    else if (action === 'invite') openInvite();
+    else if (action === 'withdraw') openWithdraw();
+    else if (action === 'leaderboard') openLeaderboard();
+  }
+
+  async function openSpin() {
+    try {
+      openModal('<h3>🎡 عجلة الحظ</h3><div class="wheel-wrap"><div class="pin"></div><div class="wheel" id="wheel"></div></div><p id="spin-msg">اضغط للف</p><button class="btn" id="spin-btn">🎲 لف العجلة</button>');
+      const wheel = document.getElementById('wheel');
+      const prizes = [10, 20, 50, 100, 10, 20, 0, 50];
+      const slice = 360 / prizes.length;
+      const colors = ['#3b82f6','#6ea8ff','#34d399','#fbbf24','#3b82f6','#6ea8ff','#64748b','#34d399'];
+      let grad = 'conic-gradient(';
+      prizes.forEach((p, i) => {
+        grad += colors[i]+' '+(i*slice)+'deg '+((i+1)*slice)+'deg'+(i<prizes.length-1?',':'');
+      });
+      grad += ')';
+      wheel.style.background = grad;
+      wheel.innerHTML = prizes.map((p, i) => {
+        const ang = i*slice + slice/2;
+        return '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%) rotate('+ang+'deg) translateY(-90px); color:#fff; font-weight:800; font-size:14px">'+p+'</div>';
+      }).join('');
+      wheel.style.position = 'relative';
+      document.getElementById('spin-btn').onclick = async () => {
+        document.getElementById('spin-btn').disabled = true;
+        try {
+          const r = await api('/spin');
+          const idx = prizes.indexOf(r.prize);
+          const target = 360 * 6 + (360 - (idx * slice + slice/2));
+          wheel.style.transform = 'rotate('+target+'deg)';
+          setTimeout(() => {
+            notify(r.prize > 0 ? 'success' : 'warning');
+            render(r);
+            pushActivity('🎡 عجلة الحظ', r.prize);
+            openModal('<h3>'+(r.prize>0?'🎉 مبروك!':'😅 حظ أوفر')+'</h3><div class="big">+'+r.prize+'</div><p>نقطة</p><button class="btn" onclick="closeModal()">رائع</button>');
+          }, 4200);
+        } catch (e) {
+          if (e.status === 429) {
+            document.getElementById('spin-msg').innerHTML = '⏳ متاحة بعد <b>'+fmtTime(e.data.wait)+'</b>';
+            document.getElementById('spin-btn').textContent = 'حسناً';
+            document.getElementById('spin-btn').disabled = false;
+            document.getElementById('spin-btn').onclick = closeModal;
+          }
+        }
+      };
+    } catch (e) { toast('حدث خطأ'); }
+  }
+
+  async function openInvite() {
+    try {
+      const r = await api('/invite');
+      const link = r.link || '—';
+      openModal(
+        '<h3>👥 ادعُ أصدقاءك</h3>'+
+        '<p>اربح <b>+'+r.reward+'</b> نقطة لكل صديق ينضم</p>'+
+        '<div class="invite-link">'+link+'</div>'+
+        '<div class="row">'+
+          '<button class="btn" id="copy-btn">📋 نسخ الرابط</button>'+
+          '<button class="btn alt" onclick="closeModal()">إغلاق</button>'+
+        '</div>'+
+        '<p style="margin-top:10px">إحالاتك: <b>'+r.referrals+'</b></p>'
+      );
+      document.getElementById('copy-btn').onclick = () => {
+        try { tg?.openTelegramLink && tg.openTelegramLink('https://t.me/share/url?url='+encodeURIComponent(link)+'&text='+encodeURIComponent('انضم واربح نقاط مجانية!')); }
+        catch(e){}
+        navigator.clipboard?.writeText(link).then(() => toast('✅ تم النسخ'));
+      };
+    } catch (e) { toast('حدث خطأ'); }
+  }
+
+  async function openWithdraw() {
+    try {
+      const s = await api('/me');
+      if (s.points < s.withdrawMin) {
+        const need = s.withdrawMin - s.points;
+        openModal('<h3>💰 طلب سحب</h3><p>رصيدك غير كافٍ</p><p>رصيدك: <b>'+fmt(s.points)+'</b></p><p>الحد الأدنى: <b>'+fmt(s.withdrawMin)+'</b></p><p>ينقصك: <b style="color:var(--gold)">'+fmt(need)+'</b> نقطة</p><button class="btn alt" onclick="closeModal()">حسناً</button>');
+        return;
+      }
+      openModal('<h3>💰 تأكيد السحب</h3><p>سيتم خصم <b>'+fmt(s.withdrawMin)+'</b> نقطة</p><p style="color:var(--gold)">= '+(s.withdrawMin/s.pointsPerDinar).toFixed(2)+' دينار</p><div class="row"><button class="btn" id="conf">✅ تأكيد</button><button class="btn alt" onclick="closeModal()">إلغاء</button></div>');
+      document.getElementById('conf').onclick = async () => {
+        try {
+          const r = await api('/withdraw');
+          notify('success'); render(r); pushActivity('💰 طلب سحب', -r.amount);
+          openModal('<h3>✅ تم تسجيل طلب السحب!</h3><div class="big">'+(r.amount/r.pointsPerDinar).toFixed(2)+'</div><p>دينار جزائري</p><p>سيُراجع طلبك خلال 24-48 ساعة.</p><button class="btn" onclick="closeModal()">رائع</button>');
+        } catch (e) { toast('حدث خطأ في السحب'); }
+      };
+    } catch (e) { toast('حدث خطأ'); }
+  }
+
+  async function openLeaderboard() {
+    try {
+      const r = await api('/leaderboard');
+      const medals = ['🥇','🥈','🥉','🔹','🔹','🔹','🔹','🔹','🔹','🔹'];
+      const renderTab = (rows, suffix) => rows.length
+        ? rows.map((u, i) => '<div class="lb-item"><div>'+medals[i]+' '+(u.full_name || u.username || ('User'+u.user_id))+'</div><div><b>'+fmt(u.val)+'</b> '+suffix+'</div></div>').join('')
+        : '<p style="color:var(--muted)">لا يوجد بعد</p>';
+      const pHtml = renderTab(r.byPoints, 'نقطة');
+      const refHtml = renderTab(r.byReferrals, 'إحالة');
+      openModal(
+        '<h3>🏆 الترتيب</h3>'+
+        '<div class="lb-tabs"><div class="lb-tab active" id="lb-p">💎 النقاط</div><div class="lb-tab" id="lb-r">👥 الإحالات</div></div>'+
+        '<div class="lb-list" id="lb-list">'+pHtml+'</div>'+
+        '<button class="btn alt" onclick="closeModal()" style="margin-top:10px">إغلاق</button>'
+      );
+      document.getElementById('lb-p').onclick = () => {
+        document.getElementById('lb-p').classList.add('active');
+        document.getElementById('lb-r').classList.remove('active');
+        document.getElementById('lb-list').innerHTML = pHtml;
+      };
+      document.getElementById('lb-r').onclick = () => {
+        document.getElementById('lb-r').classList.add('active');
+        document.getElementById('lb-p').classList.remove('active');
+        document.getElementById('lb-list').innerHTML = refHtml;
+      };
+    } catch (e) { toast('حدث خطأ'); }
+  }
+
+  document.querySelectorAll('.tile').forEach(t => {
+    t.addEventListener('click', () => doAction(t.dataset.action));
+  });
+  document.querySelectorAll('.tab').forEach(t => {
+    t.addEventListener('click', () => {
+      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+      t.classList.add('active');
+      const tab = t.dataset.tab;
+      if (tab === 'home') return;
+      doAction(tab);
+    });
+  });
+
+  load();
+</script>
+</body>
+</html>`;

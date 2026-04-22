@@ -27,6 +27,8 @@ from aiogram.types import (
     InlineKeyboardButton,
     InlineKeyboardMarkup,
     Message,
+    MenuButtonWebApp,
+    WebAppInfo,
 )
 
 # ============================ الإعدادات ============================
@@ -45,6 +47,13 @@ AD_COOLDOWN = 30                # 30 ثانية بين كل إعلان
 TASK_COOLDOWN = 60              # دقيقة بين كل مهمة
 ACTION_COOLDOWN = 1.5           # ضد السبام العام (ثواني)
 DB_PATH = "bot.db"
+
+# رابط الـ Mini App العام (HTTPS) — يُولّد تلقائياً من بيئة Replit
+def miniapp_url() -> str:
+    domain = os.environ.get("REPLIT_DEV_DOMAIN") or (
+        os.environ.get("REPLIT_DOMAINS", "").split(",")[0].strip()
+    )
+    return f"https://{domain}/api/app" if domain else ""
 
 SPIN_PRIZES = [10, 20, 50, 100, 10, 20, 0, 50]
 MYSTERY_BOX = [
@@ -192,7 +201,14 @@ def anti_spam(user_row) -> bool:
 # ============================ الواجهات ============================
 
 def main_keyboard() -> InlineKeyboardMarkup:
-    kb = [
+    rows = []
+    url = miniapp_url()
+    if url:
+        rows.append([InlineKeyboardButton(
+            text="🚀 افتح التطبيق (Mini App)",
+            web_app=WebAppInfo(url=url),
+        )])
+    kb = rows + [
         [InlineKeyboardButton(text="🎬 شاهد الإعلانات", callback_data="ads"),
          InlineKeyboardButton(text="📋 إنجاز المهام", callback_data="tasks")],
         [InlineKeyboardButton(text="👥 ادع الأصدقاء", callback_data="invite"),
@@ -543,6 +559,16 @@ async def main():
     me = await bot.get_me()
     log.info(f"🤖 Bot @{me.username} starting…")
     await bot.delete_webhook(drop_pending_updates=True)
+    url = miniapp_url()
+    if url:
+        try:
+            from aiogram.types import MenuButtonWebApp as _MB
+            await bot.set_chat_menu_button(menu_button=_MB(
+                text="🚀 شبكتي", web_app=WebAppInfo(url=url),
+            ))
+            log.info(f"🌐 Mini App menu set: {url}")
+        except Exception as e:
+            log.warning(f"Couldn't set menu button: {e}")
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 
