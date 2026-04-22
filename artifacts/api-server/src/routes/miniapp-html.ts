@@ -14,47 +14,156 @@ export const MINIAPP_HTML = `<!doctype html>
 <script>window.__ADSGRAM_BLOCK_ID = "__ADSGRAM_BLOCK_ID__";</script>
 <style>
   :root {
-    --bg: #0b1020;
-    --bg-2: #0f1530;
-    --card: #131a36;
-    --card-2: #182250;
-    --text: #e7ecff;
-    --muted: #8b97c7;
-    --accent: #6ea8ff;
-    --green: #34d399;
-    --green-2: #10b981;
-    --gold: #fbbf24;
-    --line: rgba(255,255,255,.06);
+    --bg: #050010;
+    --bg-2: #0a0220;
+    --card: rgba(30, 10, 60, 0.55);
+    --card-2: rgba(60, 20, 110, 0.6);
+    --text: #f1ecff;
+    --muted: #a395d6;
+    --accent: #b388ff;
+    --green: #5eead4;
+    --green-2: #14b8a6;
+    --gold: #ffc857;
+    --line: rgba(180, 140, 255, .12);
   }
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body {
     margin: 0; padding: 0;
-    background: radial-gradient(1200px 600px at 50% -10%, #1c2766 0%, var(--bg) 60%) fixed;
+    background:
+      radial-gradient(900px 500px at 80% -10%, #4a1d7a 0%, transparent 55%),
+      radial-gradient(700px 500px at 10% 110%, #1a0540 0%, transparent 60%),
+      linear-gradient(180deg, #050010 0%, #0a0028 50%, #050010 100%);
+    background-attachment: fixed;
     color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Tahoma, "Cairo", sans-serif;
     min-height: 100vh;
     overflow-x: hidden;
+    position: relative;
   }
-  .stars::before {
-    content: ""; position: fixed; inset: 0; pointer-events: none;
+  /* طبقات النجوم المتحركة */
+  .sky { position: fixed; inset: 0; pointer-events: none; overflow: hidden; z-index: 0; }
+  .star-layer {
+    position: absolute; inset: -50%; width: 200%; height: 200%;
+    background-repeat: repeat;
+  }
+  .star-layer.l1 {
     background-image:
-      radial-gradient(2px 2px at 12% 18%, rgba(255,255,255,.7), transparent),
-      radial-gradient(1px 1px at 78% 32%, rgba(255,255,255,.6), transparent),
-      radial-gradient(1.5px 1.5px at 30% 70%, rgba(255,255,255,.5), transparent),
-      radial-gradient(1px 1px at 90% 80%, rgba(255,255,255,.6), transparent);
-    opacity:.7;
+      radial-gradient(1px 1px at 10% 20%, #fff, transparent),
+      radial-gradient(1px 1px at 30% 70%, #fff, transparent),
+      radial-gradient(1.2px 1.2px at 55% 40%, #fff, transparent),
+      radial-gradient(1px 1px at 80% 85%, #fff, transparent),
+      radial-gradient(1px 1px at 90% 15%, #fff, transparent),
+      radial-gradient(1px 1px at 45% 90%, #fff, transparent);
+    background-size: 400px 400px;
+    opacity: .85;
+    animation: drift1 90s linear infinite, twinkle 3s ease-in-out infinite alternate;
   }
-  .container { max-width: 480px; margin: 0 auto; padding: 14px 14px 100px; }
-  .topbar { display:flex; align-items:center; gap:8px; padding: 6px 4px 14px; }
+  .star-layer.l2 {
+    background-image:
+      radial-gradient(1.5px 1.5px at 20% 50%, #d4c1ff, transparent),
+      radial-gradient(2px 2px at 65% 25%, #fff, transparent),
+      radial-gradient(1.5px 1.5px at 85% 65%, #b388ff, transparent),
+      radial-gradient(1px 1px at 15% 80%, #fff, transparent);
+    background-size: 600px 600px;
+    opacity: .7;
+    animation: drift2 140s linear infinite, twinkle 5s ease-in-out infinite alternate;
+  }
+  .star-layer.l3 {
+    background-image:
+      radial-gradient(2.5px 2.5px at 40% 30%, #fff, transparent),
+      radial-gradient(2px 2px at 75% 75%, #c7a8ff, transparent);
+    background-size: 800px 800px;
+    opacity: .55;
+    animation: drift3 200s linear infinite;
+  }
+  @keyframes drift1 { from { transform: translate(0,0); } to { transform: translate(-400px,-400px); } }
+  @keyframes drift2 { from { transform: translate(0,0); } to { transform: translate(600px,-600px); } }
+  @keyframes drift3 { from { transform: translate(0,0); } to { transform: translate(-800px,800px); } }
+  @keyframes twinkle { from { opacity: .35; } to { opacity: 1; } }
+
+  /* الشهب المتساقطة */
+  .shooting { position: absolute; width: 2px; height: 2px; background: #fff;
+    border-radius: 50%; box-shadow: 0 0 8px 2px #fff;
+  }
+  .shooting::after {
+    content:""; position: absolute; top: 50%; right: 0; width: 120px; height: 1px;
+    background: linear-gradient(to left, #fff, transparent);
+    transform: translateY(-50%);
+  }
+  .s1 { top: 15%; left: -10%; animation: shoot 7s linear infinite; animation-delay: 1s; }
+  .s2 { top: 45%; left: -10%; animation: shoot 11s linear infinite; animation-delay: 4s; }
+  .s3 { top: 70%; left: -10%; animation: shoot 9s linear infinite; animation-delay: 7s; }
+  @keyframes shoot {
+    0% { transform: translate(0,0) rotate(20deg); opacity: 0; }
+    10% { opacity: 1; }
+    70% { opacity: 1; }
+    100% { transform: translate(120vw, 60vh) rotate(20deg); opacity: 0; }
+  }
+
+  /* كوكب زحل في الزاوية العلوية */
+  .saturn {
+    position: fixed; top: 18px; left: 18px;
+    width: 110px; height: 110px;
+    pointer-events: none; z-index: 1;
+    animation: float 8s ease-in-out infinite;
+    filter: drop-shadow(0 0 25px rgba(255, 200, 87, 0.35));
+  }
+  .saturn .ring {
+    position: absolute; inset: 0;
+    border-radius: 50%;
+    transform: rotate(-22deg);
+  }
+  .saturn .planet {
+    position: absolute; top: 22%; left: 22%; width: 56%; height: 56%;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle at 30% 30%, #ffd98a 0%, #f4a52f 35%, #b8651a 70%, #6b3210 100%);
+    box-shadow:
+      inset -8px -10px 18px rgba(0,0,0,.55),
+      inset 4px 5px 10px rgba(255, 235, 180, .35);
+  }
+  .saturn .planet::before {
+    content:""; position: absolute; top: 38%; left: 8%; right: 8%; height: 4px;
+    background: rgba(120, 60, 20, .55); border-radius: 50%;
+  }
+  .saturn .planet::after {
+    content:""; position: absolute; top: 58%; left: 12%; right: 16%; height: 3px;
+    background: rgba(140, 70, 20, .45); border-radius: 50%;
+  }
+  .saturn .ring-band {
+    position: absolute; top: 50%; left: -8%; right: -8%; height: 14px;
+    transform: translateY(-50%);
+    border-radius: 50%;
+    background: linear-gradient(90deg, transparent 0%, #f0c674 12%, #fff3c4 50%, #f0c674 88%, transparent 100%);
+    opacity: .9;
+    box-shadow: 0 0 14px rgba(255, 220, 140, .5);
+  }
+  .saturn .ring-band.inner {
+    top: 50%; left: 4%; right: 4%; height: 6px;
+    background: linear-gradient(90deg, transparent, #b8821f, transparent);
+    opacity: .8;
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(-8px) rotate(2deg); }
+  }
+  @media (max-width: 380px) {
+    .saturn { width: 80px; height: 80px; top: 12px; left: 12px; }
+  }
+  .container { max-width: 480px; margin: 0 auto; padding: 14px 14px 100px; position: relative; z-index: 2; }
+  .topbar { display:flex; align-items:center; justify-content: flex-end; gap:8px; padding: 6px 4px 14px; min-height: 80px; }
   .topbar .logo { font-weight: 800; letter-spacing:.5px; }
   .topbar .logo .bolt { color: var(--gold); margin-inline-start: 4px; }
   .balance-card {
-    background: linear-gradient(180deg, rgba(28,39,102,.7), rgba(19,26,54,.85));
-    border: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(74,29,122,.55), rgba(20,5,50,.75));
+    border: 1px solid rgba(180,140,255,.2);
     border-radius: 18px;
     padding: 16px 18px 18px;
-    box-shadow: 0 10px 30px rgba(0,0,0,.25);
+    box-shadow: 0 10px 35px rgba(80,30,150,.35), inset 0 1px 0 rgba(255,255,255,.05);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
   }
+  .stat, .tile, .activity, .modal-card { backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
   .balance-row { display:flex; justify-content: space-between; align-items: flex-end; }
   .balance-label { color: var(--muted); font-size: 13px; margin-bottom: 4px; }
   .balance-value { display:flex; align-items: baseline; gap: 6px; }
@@ -150,7 +259,22 @@ export const MINIAPP_HTML = `<!doctype html>
   @keyframes shimmer { 0% { background-position: 200% 0 } 100% { background-position: -200% 0 } }
 </style>
 </head>
-<body class="stars">
+<body>
+  <div class="sky" aria-hidden="true">
+    <div class="star-layer l1"></div>
+    <div class="star-layer l2"></div>
+    <div class="star-layer l3"></div>
+    <div class="shooting s1"></div>
+    <div class="shooting s2"></div>
+    <div class="shooting s3"></div>
+  </div>
+  <div class="saturn" aria-hidden="true">
+    <div class="ring">
+      <div class="ring-band"></div>
+      <div class="planet"></div>
+      <div class="ring-band inner"></div>
+    </div>
+  </div>
   <div class="container">
     <div class="topbar">
       <div class="logo">⚡ <span>شبكتي</span></div>
