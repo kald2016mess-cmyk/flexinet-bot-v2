@@ -1,76 +1,57 @@
-"""
-🤖 Telegram Earnings Bot (aiogram 3.x)
-=======================================
-بوت تيليجرام كامل بنظام نقاط، عجلة الحظ، إحالات، مكافآت يومية،
-صناديق غامضة، ترتيب، وسحب — قاعدة بيانات SQLite.
-
-تشغيل على Replit:
-  1) ضع توكن البوت في Secrets باسم: BOT_TOKEN  (من @BotFather)
-  2) شغّل الـ workflow "Telegram Bot" أو نفّذ:  python main.py
-"""
-
 import asyncio
 import logging
 import os
-import random
 import sqlite3
 import time
 from contextlib import closing
-from typing import Optional
+from flask import Flask
+from threading import Thread
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.filters import CommandStart, Command
+from aiogram.filters import CommandStart
 from aiogram.types import (
+    Message,
     CallbackQuery,
     InlineKeyboardButton,
     InlineKeyboardMarkup,
-    Message,
-    MenuButtonWebApp,
-    WebAppInfo,
 )
 
-# ============================ الإعدادات ============================
+# ================= CONFIG =================
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "").strip()
 if not BOT_TOKEN:
-    raise SystemExit("❌ BOT_TOKEN غير موجود. أضفه في Replit Secrets.")
+    raise SystemExit("❌ BOT_TOKEN missing")
 
-POINTS_PER_DINAR = 100          # كل 100 نقطة = 1 دينار
-WITHDRAW_MIN = 5000             # الحد الأدنى للسحب
-AD_REWARD = 20                  # نقاط الإعلان
-TASK_REWARD = 50                # نقاط المهمة
-REFERRAL_REWARD = 100           # نقاط الإحالة
-DAILY_REWARD = 75               # المكافأة اليومية
-SPIN_COOLDOWN = 60 * 60         # ساعة واحدة بين كل لفّة
-AD_COOLDOWN = 30                # 30 ثانية بين كل إعلان
-TASK_COOLDOWN = 60              # دقيقة بين كل مهمة
-ACTION_COOLDOWN = 1.5           # ضد السبام العام (ثواني)
+ADMIN_CHANNEL = -1000000000000  # 🔥 ضع ID القناة
+
+AD_REWARD = 20
+TASK_REWARD = 50
+DAILY_REWARD = 75
+REF_REWARD = 100
+
+MIN_WITHDRAW_DZ = 100
+GB_PRICE = 1000
+
 DB_PATH = "bot.db"
 
-# رابط الـ Mini App العام (HTTPS) — يُولّد تلقائياً من بيئة Replit
-def miniapp_url() -> str:
-    domain = os.environ.get("REPLIT_DEV_DOMAIN") or (
-        os.environ.get("REPLIT_DOMAINS", "").split(",")[0].strip()
-    )
-    return f"https://{domain}/api/app" if domain else ""
-
-SPIN_PRIZES = [10, 20, 50, 100, 10, 20, 0, 50]
-MYSTERY_BOX = [
-    ("🎉 جائزة كبرى!", 200),
-    ("🎁 جائزة جيدة", 80),
-    ("✨ مكافأة صغيرة", 30),
-    ("💨 صندوق فارغ", 0),
-    ("📉 خسارة بسيطة", -20),
-]
-
-# ============================ السجلات ============================
-logging.basicConfig(level=logging.INFO,
-                    format="%(asctime)s | %(levelname)s | %(message)s")
+logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("bot")
 
-# ============================ قاعدة البيانات ============================
+# ================= KEEP ALIVE =================
+app = Flask(__name__)
 
+@app.route("/")
+def home():
+    return "Bot is alive 🔥"
+
+def run():
+    app.run(host="0.0.0.0", port=8080)
+
+def keep_alive():
+    Thread(target=run).start()
+
+# ================= DATABASE =================
 def db_conn():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
@@ -81,213 +62,253 @@ def db_init():
     with closing(db_conn()) as c, c:
         c.executescript("""
         CREATE TABLE IF NOT EXISTS users (
-            user_id     INTEGER PRIMARY KEY,
-            username    TEXT,
-            full_name   TEXT,
-            points      INTEGER DEFAULT 0,
-            referrals   INTEGER DEFAULT 0,
-            ads_watched INTEGER DEFAULT 0,
-            tasks_done  INTEGER DEFAULT 0,
-            spins_used  INTEGER DEFAULT 0,
+            user_id INTEGER PRIMARY KEY,
+            username TEXT,
+            full_name TEXT,
+            diamonds INTEGER DEFAULT 0,
+            referrals INTEGER DEFAULT 0,
             referred_by INTEGER,
-            last_spin   INTEGER DEFAULT 0,
-            last_daily  INTEGER DEFAULT 0,
-            last_ad     INTEGER DEFAULT 0,
-            last_task   INTEGER DEFAULT 0,
-            last_action REAL    DEFAULT 0,
-            joined_at   INTEGER DEFAULT (strftime('%s','now'))
+            last_daily INTEGER DEFAULT 0
         );
-        CREATE TABLE IF NOT EXISTS withdrawals (
-            id        INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id   INTEGER NOT NULL,
-            amount    INTEGER NOT NULL,
-            status    TEXT DEFAULT 'pending',
+
+        CREATE TABLE IF NOT EXISTS weekly_rewards (
+            user_id INTEGER PRIMARY KEY,
+            last_claim INTEGER DEFAULT 0
+        );
+
+        CREATE TABLE IF NOT EXISTS logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER,
+            action TEXT,
+            amount INTEGER,
             created_at INTEGER DEFAULT (strftime('%s','now'))
-        );
-        CREATE TABLE IF NOT EXISTS task_completions (
-            user_id      INTEGER NOT NULL,
-            task_id      TEXT NOT NULL,
-            completed_at INTEGER DEFAULT (strftime('%s','now')),
-            PRIMARY KEY (user_id, task_id)
-        );
-        CREATE TABLE IF NOT EXISTS tracked_channels (
-            chat_id     INTEGER PRIMARY KEY,
-            title       TEXT,
-            invite_link TEXT,
-            username    TEXT,
-            added_at    INTEGER DEFAULT (strftime('%s','now'))
         );
         """)
 
-
-def get_user(user_id: int) -> Optional[sqlite3.Row]:
+# ================= USERS =================
+def get_user(uid):
     with closing(db_conn()) as c:
-        return c.execute("SELECT * FROM users WHERE user_id=?", (user_id,)).fetchone()
+        return c.execute("SELECT * FROM users WHERE user_id=?", (uid,)).fetchone()
 
 
-def upsert_user(msg_user, referred_by: Optional[int] = None) -> sqlite3.Row:
-    existing = get_user(msg_user.id)
+def create_user(user, ref=None):
+    u = get_user(user.id)
+    if not u:
+        with closing(db_conn()) as c, c:
+            c.execute("""
+                INSERT INTO users (user_id, username, full_name, referred_by)
+                VALUES (?,?,?,?)
+            """, (user.id, user.username or "", user.full_name or "", ref))
+
+        if ref and ref != user.id:
+            add_diamonds(ref, REF_REWARD)
+            add_log(ref, "Referral Reward", REF_REWARD)
+            with closing(db_conn()) as c, c:
+                c.execute("UPDATE users SET referrals = referrals + 1 WHERE user_id=?", (ref,))
+
+    return get_user(user.id)
+
+
+def update(uid, **fields):
+    keys = ",".join(f"{k}=?" for k in fields)
+    vals = list(fields.values()) + [uid]
     with closing(db_conn()) as c, c:
-        if existing is None:
-            c.execute(
-                """INSERT INTO users (user_id, username, full_name, referred_by)
-                   VALUES (?,?,?,?)""",
-                (msg_user.id, msg_user.username or "", msg_user.full_name or "",
-                 referred_by if referred_by and referred_by != msg_user.id else None),
-            )
-            if referred_by and referred_by != msg_user.id:
-                ref = c.execute("SELECT user_id FROM users WHERE user_id=?",
-                                (referred_by,)).fetchone()
-                if ref:
-                    c.execute(
-                        "UPDATE users SET points=points+?, referrals=referrals+1 WHERE user_id=?",
-                        (REFERRAL_REWARD, referred_by),
-                    )
-        else:
-            c.execute("UPDATE users SET username=?, full_name=? WHERE user_id=?",
-                      (msg_user.username or "", msg_user.full_name or "", msg_user.id))
-    return get_user(msg_user.id)
+        c.execute(f"UPDATE users SET {keys} WHERE user_id=?", vals)
 
 
-def update_user(user_id: int, **fields):
-    if not fields:
-        return
-    cols = ", ".join(f"{k}=?" for k in fields.keys())
-    vals = list(fields.values()) + [user_id]
+def add_diamonds(uid, amount):
     with closing(db_conn()) as c, c:
-        c.execute(f"UPDATE users SET {cols} WHERE user_id=?", vals)
+        c.execute("UPDATE users SET diamonds = diamonds + ? WHERE user_id=?", (amount, uid))
 
-
-def add_points(user_id: int, delta: int):
+# ================= LOG SYSTEM =================
+def add_log(uid, action, amount=0):
     with closing(db_conn()) as c, c:
-        c.execute("UPDATE users SET points = MAX(0, points + ?) WHERE user_id=?",
-                  (delta, user_id))
+        c.execute("""
+        INSERT INTO logs (user_id, action, amount)
+        VALUES (?, ?, ?)
+        """, (uid, action, amount))
 
+# ================= LEVEL SYSTEM =================
+def get_level(d):
+    if d >= 15000:
+        return "🔥 Lv5"
+    elif d >= 7000:
+        return "💎 Lv4"
+    elif d >= 3000:
+        return "⭐ Lv3"
+    elif d >= 1000:
+        return "⚡ Lv2"
+    else:
+        return "🆕 Lv1"
 
-def top_by(field: str, limit: int = 10):
-    assert field in ("points", "referrals")
+# ================= WEEKLY 2GB =================
+def can_claim_2gb(uid):
     with closing(db_conn()) as c:
-        return c.execute(
-            f"SELECT user_id, full_name, username, {field} AS val FROM users "
-            f"ORDER BY {field} DESC, user_id ASC LIMIT ?", (limit,)
-        ).fetchall()
+        r = c.execute("SELECT last_claim FROM weekly_rewards WHERE user_id=?", (uid,)).fetchone()
+        if not r:
+            return True
+        return time.time() - r["last_claim"] >= 7 * 24 * 3600
 
 
-def add_withdrawal(user_id: int, amount: int):
+def save_2gb(uid):
     with closing(db_conn()) as c, c:
-        c.execute("INSERT INTO withdrawals (user_id, amount) VALUES (?,?)",
-                  (user_id, amount))
-        c.execute("UPDATE users SET points = points - ? WHERE user_id=?",
-                  (amount, user_id))
+        c.execute("""
+        INSERT INTO weekly_rewards (user_id, last_claim)
+        VALUES (?, ?)
+        ON CONFLICT(user_id) DO UPDATE SET last_claim=excluded.last_claim
+        """, (uid, int(time.time())))
 
-
-# ============================ أدوات مساعدة ============================
-
-def fmt_time(seconds: int) -> str:
-    seconds = int(max(0, seconds))
-    h, rem = divmod(seconds, 3600)
-    m, s = divmod(rem, 60)
-    if h: return f"{h}س {m}د"
-    if m: return f"{m}د {s}ث"
-    return f"{s}ث"
-
-
-def to_dinar(points: int) -> float:
-    return round(points / POINTS_PER_DINAR, 2)
-
-
-def progress_bar(current: int, target: int, width: int = 12) -> str:
-    pct = min(1.0, current / target) if target else 0
-    filled = int(pct * width)
-    return "▓" * filled + "░" * (width - filled)
-
-
-def anti_spam(user_row) -> bool:
-    """يرجع True إذا الضغط مسموح، False إذا في سبام."""
-    now = time.time()
-    if now - (user_row["last_action"] or 0) < ACTION_COOLDOWN:
-        return False
-    update_user(user_row["user_id"], last_action=now)
-    return True
-
-
-# ============================ الواجهات ============================
-
-def main_keyboard() -> InlineKeyboardMarkup:
-    rows = []
-    url = miniapp_url()
-    if url:
-        rows.append([InlineKeyboardButton(
-            text="🚀 افتح التطبيق (Mini App)",
-            web_app=WebAppInfo(url=url),
-        )])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def back_kb() -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="🔙 رجوع للقائمة", callback_data="home")
-    ]])
-
-
-def render_home(u) -> str:
-    points = u["points"]
-    bar = progress_bar(points, WITHDRAW_MIN)
-    return (
-        f"<b>⚡ شبكتي</b>\n"
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"👤 <b>{u['full_name'] or 'مستخدم'}</b>\n\n"
-        f"💎 <b>رصيدك:</b> <code>{points}</code> نقطة\n"
-        f"💵 <b>= {to_dinar(points)} دينار</b>\n"
-        f"📊 <b>التقدم نحو السحب:</b>\n"
-        f"<code>{bar}</code> {points}/{WITHDRAW_MIN}\n"
-        f"━━━━━━━━━━━━━━━━━━━\n"
-        f"👥 الإحالات: <b>{u['referrals']}</b>   "
-        f"🎬 الإعلانات: <b>{u['ads_watched']}</b>   "
-        f"📋 المهام: <b>{u['tasks_done']}</b>\n\n"
-        f"اختر من القائمة 👇"
-    )
-
-
-# ============================ البوت ============================
+# ================= BOT =================
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
 
-
-@dp.my_chat_member()
-async def on_my_chat_member(event):
-    """يحفظ تلقائياً معرّف أي قناة/مجموعة يُضاف فيها البوت كعضو/مشرف."""
-    try:
-        chat = event.chat
-        new_status = event.new_chat_member.status
-        if chat.type not in ("channel", "supergroup", "group"):
-            return
-        if new_status not in ("member", "administrator", "creator"):
-            return
-        invite_link = ""
-        try:
-            full = await bot.get_chat(chat.id)
-            invite_link = full.invite_link or ""
-        except Exception:
-            pass
-        with closing(db_conn()) as c, c:
-            c.execute(
-                "INSERT OR REPLACE INTO tracked_channels (chat_id, title, invite_link, username, added_at) "
-                "VALUES (?,?,?,?, strftime('%s','now'))",
-                (chat.id, chat.title or "", invite_link, chat.username or ""),
-            )
-        log.info(f"📢 Channel tracked: {chat.title} | id={chat.id} | invite={invite_link}")
-    except Exception as e:
-        log.warning(f"my_chat_member error: {e}")
+# ================= KEYBOARD =================
+def main_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🎬 Ads", callback_data="ads")],
+        [InlineKeyboardButton(text="📋 Tasks", callback_data="tasks")],
+        [InlineKeyboardButton(text="💎 Daily", callback_data="daily")],
+        [InlineKeyboardButton(text="👥 Invite", callback_data="invite")],
+        [InlineKeyboardButton(text="🛒 Shop", callback_data="shop")],
+    ])
 
 
+def shop_kb():
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="💰 Ooredoo (100 DZ+)", callback_data="ooredoo")],
+        [InlineKeyboardButton(text="💰 Djezzy (100 DZ+)", callback_data="djezzy_cash")],
+        [InlineKeyboardButton(text="💰 Mobilis (100 DZ+)", callback_data="mobilis")],
+        [InlineKeyboardButton(text="📶 Djezzy 2GB = 1000 💎", callback_data="djezzy_gb")],
+        [InlineKeyboardButton(text="🔙 Back", callback_data="home")],
+    ])
+
+# ================= START =================
 @dp.message(CommandStart())
-async def cmd_start(message: Message):
-    args = message.text.split(maxsplit=1)
-    referred_by = None
-    if len(args) > 1 and args[1].startswith("ref_"):
+async def start(m: Message):
+    ref = None
+    if len(m.text.split()) > 1 and "ref_" in m.text:
         try:
-            referred_by = int(args[1].replace("ref_", ""))
+            ref = int(m.text.split("_")[1])
+        except:
+            pass
+
+    u = create_user(m.from_user, ref)
+
+    await m.answer(
+        f"👋 Welcome {u['full_name']}\n"
+        f"💎 Diamonds: {u['diamonds']}\n"
+        f"📊 Level: {get_level(u['diamonds'])}",
+        reply_markup=main_kb()
+    )
+
+# ================= ADS =================
+@dp.callback_query(F.data == "ads")
+async def ads(c: CallbackQuery):
+    add_diamonds(c.from_user.id, AD_REWARD)
+    add_log(c.from_user.id, "Ads Reward", AD_REWARD)
+    await c.answer(f"+{AD_REWARD} 💎")
+
+# ================= TASKS =================
+@dp.callback_query(F.data == "tasks")
+async def tasks(c: CallbackQuery):
+    add_diamonds(c.from_user.id, TASK_REWARD)
+    add_log(c.from_user.id, "Task Reward", TASK_REWARD)
+    await c.answer(f"+{TASK_REWARD} 💎")
+
+# ================= DAILY =================
+@dp.callback_query(F.data == "daily")
+async def daily(c: CallbackQuery):
+    u = get_user(c.from_user.id)
+    now = time.time()
+
+    if now - (u["last_daily"] or 0) < 86400:
+        await c.answer("⏳ Wait 24h", show_alert=True)
+        return
+
+    add_diamonds(c.from_user.id, DAILY_REWARD)
+    update(c.from_user.id, last_daily=now)
+    add_log(c.from_user.id, "Daily Reward", DAILY_REWARD)
+
+    await c.answer(f"+{DAILY_REWARD} 💎")
+
+# ================= INVITE =================
+@dp.callback_query(F.data == "invite")
+async def invite(c: CallbackQuery):
+    me = await bot.get_me()
+    link = f"https://t.me/{me.username}?start=ref_{c.from_user.id}"
+
+    await c.message.edit_text(
+        f"👥 Invite Friends\n\n🔗 {link}",
+        reply_markup=main_kb()
+    )
+
+# ================= SHOP =================
+@dp.callback_query(F.data == "shop")
+async def shop(c: CallbackQuery):
+    await c.message.edit_text("🛒 SHOP", reply_markup=shop_kb())
+
+# ================= CASH =================
+@dp.callback_query(F.data.in_(["ooredoo", "djezzy_cash", "mobilis"]))
+async def cash(c: CallbackQuery):
+    u = get_user(c.from_user.id)
+
+    if u["diamonds"] < MIN_WITHDRAW_DZ:
+        await c.answer("❌ Min 100 DZ", show_alert=True)
+        return
+
+    await bot.send_message(
+        ADMIN_CHANNEL,
+        f"💰 Cash Request\n👤 {c.from_user.id}\n💎 {u['diamonds']}"
+    )
+
+    add_log(c.from_user.id, "Cash Request", u["diamonds"])
+    await c.answer("📨 Sent")
+
+# ================= 2GB =================
+@dp.callback_query(F.data == "djezzy_gb")
+async def djezzy(c: CallbackQuery):
+    uid = c.from_user.id
+    u = get_user(uid)
+
+    if not can_claim_2gb(uid):
+        await c.answer("⏳ Weekly only", show_alert=True)
+        return
+
+    if u["diamonds"] < GB_PRICE:
+        await c.answer("❌ Need 1000 💎", show_alert=True)
+        return
+
+    add_diamonds(uid, -GB_PRICE)
+    save_2gb(uid)
+
+    await bot.send_message(
+        ADMIN_CHANNEL,
+        f"📶 2GB Request\n👤 {uid}"
+    )
+
+    add_log(uid, "2GB Request", GB_PRICE)
+    await c.answer("📨 Sent")
+
+# ================= HOME =================
+@dp.callback_query(F.data == "home")
+async def home(c: CallbackQuery):
+    u = get_user(c.from_user.id)
+
+    await c.message.edit_text(
+        f"💎 Diamonds: {u['diamonds']}\n"
+        f"📊 Level: {get_level(u['diamonds'])}",
+        reply_markup=main_kb()
+    )
+
+# ================= RUN =================
+async def main():
+    db_init()
+    keep_alive()
+    await bot.delete_webhook(drop_pending_updates=True)
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())_", ""))
         except ValueError:
             pass
     u = upsert_user(message.from_user, referred_by=referred_by)
